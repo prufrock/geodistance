@@ -149,4 +149,38 @@ trait GeoDistanceTrait {
         ->orderby('distance', 'ASC');
     }
 
+    /**
+     * @param Query $q
+     * @param int|string $measurement
+     * @param float|string $lat The latitude to measure against.
+     * @param float|string $lng The longitude to measure against.
+     * @return mixed
+     * @throws \Jackpopp\GeoDistance\InvalidMeasurementException
+     */
+    public function scopeSelectWithDistance($q, $measurement = null, $lat = null, $lng = null) {
+        $pdo = DB::connection()->getPdo();
+
+        $latColumn = $this->getLatColumn();
+        $lngColumn = $this->getLngColumn();
+
+        $lat = ($lat === null) ? $this->lat() : $lat;
+        $lng = ($lng === null) ? $this->lng() : $lng;
+
+        $meanRadius = $this->resolveEarthMeanRadius($measurement);
+
+        $lat = $pdo->quote(floatval($lat));
+        $lng = $pdo->quote(floatval($lng));
+        $meanRadius = $pdo->quote(floatval($meanRadius));
+
+        // Paramater bindings havent been used as it would need to be within a DB::select which would run straight away and return its result, which we dont want as it will break the query builder.
+        // This method should work okay as our values have been cooerced into correct types and quoted with pdo.
+        return $q->select("*")
+                 ->from(DB::raw(
+                   "(
+                    Select *, ( $meanRadius * acos( cos( radians($lat) ) * cos( radians( $latColumn ) ) * cos( radians( $lngColumn ) - radians($lng) ) + sin( radians($lat) ) * sin( radians( $latColumn ) ) ) ) AS distance
+                    From {$this->getTable()}
+                    ) As {$this->getTable()}"
+                 ));
+    }
+
 }
